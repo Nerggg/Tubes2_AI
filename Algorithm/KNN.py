@@ -6,7 +6,7 @@ from os import cpu_count
 from tqdm import tqdm
 import time
 
-class KNN:
+class SelfKNN:
     def __init__(self, k=5, n_jobs=1, metric='manhattan', p=1, weights='uniform', verbose=True):
         if not isinstance(k, int) or k < 1:
             raise ValueError("Parameter 'k' must be a positive integer.")

@@ -2,7 +2,7 @@ import numpy as np
 from collections import defaultdict
 import pickle
 
-class NaiveBayes:
+class SelfGaussianNB:
     def __init__(self, verbose=False):
         self.class_probabilities = None
         self.mean = None

@@ -1,115 +1,125 @@
 import numpy as np
+import pandas as pd
 from collections import Counter
-from treenode import TreeNode
-import numpy as np
-from collections import Counter
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 class TreeNode:
-    def __init__(self, feature_idx=None, feature_val=None, prediction_probs=None, feature_importance=0):
-        self.feature_idx = feature_idx
-        self.feature_val = feature_val
-        self.prediction_probs = prediction_probs
-        self.feature_importance = feature_importance
-        self.left = None
-        self.right = None
+    def __init__(self, feature=None, value=None, output=None):
+        self.feature = feature  # Index of the feature used for splitting
+        self.value = value  # Value of the feature used for the split
+        self.output = output  # Predicted label if the node is a leaf
+        self.branches = {}  # Dictionary for child nodes based on feature values
 
-    def node_def(self):
-        """Return a string representation of the node."""
-        if self.feature_idx is None:
-            return f"Leaf Node: {self.prediction_probs}"
-        return f"X[{self.feature_idx}] < {self.feature_val}, Importance: {self.feature_importance}"
+    def is_leaf_node(self):
+        """Check if the current node is a leaf."""
+        return self.output is not None
 
+class SelfID3:
+    def __init__(self):
+        self.root = None
 
-class DecisionTree:
-    def __init__(self, max_depth=5, min_samples_leaf=1, min_information_gain=1e-7, feature_selection="all"):
-        self.max_depth = max_depth
-        self.min_samples_leaf = min_samples_leaf
-        self.min_information_gain = min_information_gain
-        self.feature_selection = feature_selection
-        self.tree = None
+    def _entropy(self, labels):
+        """Calculate the entropy of the dataset."""
+        total = len(labels)
+        label_counts = Counter(labels)
+        entropy = -sum((count / total) * np.log2(count / total) for count in label_counts.values())
+        logging.info(f"Entropy calculated: {entropy} for labels: {label_counts}")
+        return entropy
 
-    def _entropy(self, probabilities):
-        return -sum(p * np.log2(p) for p in probabilities if p > 0)
+    def _information_gain(self, data, feature):
+        """Compute information gain for a specific feature."""
+        overall_entropy = self._entropy(data.iloc[:, -1])
+        values = data[feature].unique()
 
-    def _class_probabilities(self, labels):
-        total_count = len(labels)
-        return [count / total_count for count in Counter(labels).values()]
+        weighted_entropy = 0
+        for value in values:
+            subset = data[data[feature] == value]
+            subset_entropy = self._entropy(subset.iloc[:, -1])
+            weighted_entropy += (len(subset) / len(data)) * subset_entropy
+            logging.info(f"Subset entropy for feature '{feature}' = {value}: {subset_entropy}")
 
-    def _data_entropy(self, labels):
-        return self._entropy(self._class_probabilities(labels))
+        info_gain = overall_entropy - weighted_entropy
+        logging.info(f"Information gain for feature '{feature}': {info_gain}")
+        return info_gain
 
-    def _split(self, data, feature_idx, feature_val):
-        left_mask = data[:, feature_idx] < feature_val
-        return data[left_mask], data[~left_mask]
+    def _choose_best_feature(self, data, features):
+        """Select the feature with the highest information gain."""
+        best_gain = float('-inf')
+        best_feature = None
 
-    def _partition_entropy(self, subsets):
-        total_count = sum(len(subset) for subset in subsets)
-        return sum(self._data_entropy(subset[:, -1]) * (len(subset) / total_count) for subset in subsets)
+        logging.info("Choosing the best feature for split...")
+        for feature in features:
+            gain = self._information_gain(data, feature)
+            logging.info(f"Feature '{feature}' has information gain: {gain}")
+            if gain > best_gain:
+                best_gain = gain
+                best_feature = feature
 
-    def _find_best_split(self, data):
-        num_features = data.shape[1] - 1
-        best_split = None
-        min_entropy = float('inf')
+        logging.info(f"Best feature selected: {best_feature}")
+        return best_feature
 
-        features = self._select_features(num_features)
-        for feature_idx in features:
-            unique_vals = np.unique(data[:, feature_idx])
-            split_points = (unique_vals[:-1] + unique_vals[1:]) / 2
-            for val in split_points:
-                left, right = self._split(data, feature_idx, val)
-                if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf:
-                    entropy = self._partition_entropy([left, right])
-                    if entropy < min_entropy:
-                        min_entropy = entropy
-                        best_split = (feature_idx, val, left, right)
-        return best_split
+    def _build_tree(self, data, features):
+        """Recursively construct the decision tree."""
+        labels = data.iloc[:, -1]
 
-    def _select_features(self, num_features):
-        if self.feature_selection == "sqrt":
-            return np.random.choice(num_features, int(np.sqrt(num_features)), replace=False)
-        elif self.feature_selection == "log":
-            return np.random.choice(num_features, int(np.log2(num_features)), replace=False)
-        return np.arange(num_features)
+        # If all labels are identical, return a leaf node
+        if len(labels.unique()) == 1:
+            logging.info(f"All labels are the same: {labels.iloc[0]}. Creating a leaf node.")
+            return TreeNode(output=labels.iloc[0])
 
-    def _build_tree(self, data, depth):
-        labels = data[:, -1]
-        if depth >= self.max_depth or len(set(labels)) == 1:
-            return TreeNode(prediction_probs=self._class_probabilities(labels))
+        # If no features remain, return a leaf node with the majority label
+        if not features:
+            majority_label = labels.value_counts().idxmax()
+            logging.info(f"No features left. Majority label: {majority_label}. Creating a leaf node.")
+            return TreeNode(output=majority_label)
 
-        split = self._find_best_split(data)
-        if not split:
-            return TreeNode(prediction_probs=self._class_probabilities(labels))
+        # Select the feature with the highest information gain
+        best_feature = self._choose_best_feature(data, features)
+        logging.info(f"Splitting on feature: {best_feature}")
 
-        feature_idx, feature_val, left, right = split
-        node = TreeNode(feature_idx, feature_val, self._class_probabilities(labels))
-        node.left = self._build_tree(left, depth + 1)
-        node.right = self._build_tree(right, depth + 1)
+        # Create a new node for the selected feature
+        node = TreeNode(feature=best_feature)
+
+        # Remove the selected feature from the list of available features
+        remaining_features = [f for f in features if f != best_feature]
+
+        # Build child nodes for each value of the selected feature
+        for value in data[best_feature].unique():
+            subset = data[data[best_feature] == value]
+            logging.info(f"Creating subtree for feature '{best_feature}' = {value} with {len(subset)} samples.")
+            node.branches[value] = self._build_tree(subset, remaining_features)
+
         return node
 
-    def train(self, X, y):
-        data = np.hstack((X, y.reshape(-1, 1)))
-        self.tree = self._build_tree(data, depth=0)
+    def fit(self, X, y):
+        """Train the ID3 decision tree model with features X and labels y."""
+        logging.info("Starting training process...")
+        data = pd.concat([X, y], axis=1)
+        features = list(X.columns)
+        self.root = self._build_tree(data, features)
+        logging.info("Training completed.")
 
-    def _predict_one(self, x, node):
-        while node:
-            if node.feature_idx is None:
-                return node.prediction_probs
-            if x[node.feature_idx] < node.feature_val:
-                node = node.left
-            else:
-                node = node.right
-        return None
+    def _predict_instance(self, instance, node):
+        """Make a prediction for a single instance."""
+        if node.is_leaf_node():
+            logging.info(f"Reached leaf node. Prediction: {node.output}")
+            return node.output
+
+        feature_value = instance[node.feature]
+        child_node = node.branches.get(feature_value)
+        if child_node is None:
+            logging.warning(f"Feature value '{feature_value}' not found in tree for feature '{node.feature}'.")
+            return None  # Return None if the value is missing in the tree
+
+        logging.info(f"Following branch: {node.feature} = {feature_value}")
+        return self._predict_instance(instance, child_node)
 
     def predict(self, X):
-        return np.array([np.argmax(self._predict_one(x, self.tree)) for x in X])
-
-    def predict_proba(self, X):
-        return np.array([self._predict_one(x, self.tree) for x in X])
-
-    def print_tree(self, node=None, level=0):
-        if node is None:
-            node = self.tree
-        if node:
-            print("    " * level + "-> " + node.node_def())
-            self.print_tree(node.left, level + 1)
-            self.print_tree(node.right, level + 1)
+        """Predict labels for all instances in the dataset X."""
+        logging.info("Starting prediction process...")
+        predictions = np.array([self._predict_instance(instance, self.root) for _, instance in X.iterrows()])
+        logging.info("Prediction completed.")
+        return predictions
