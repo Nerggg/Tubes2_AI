@@ -1,6 +1,6 @@
 import numpy as np
 from collections import Counter
-!pip install treenode
+# !pip install treenode
 from treenode import TreeNode
 
 class TreeNode():
