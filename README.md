@@ -49,3 +49,6 @@ Tugas besar ini bertujuan untuk memberikan pengalaman langsung dalam menerapkan 
    ```bash
    git clone https://github.com/Nerggg/Tubes2_AI.git
 2. Run file main.ipynb atau akses melalui google colab https://colab.research.google.com/drive/1NCz-x8_WTVVQZJOSqM-9AzA6I8fima4W#scrollTo=KEOvdZm9CuHD
+
+## Laporan
+https://docs.google.com/document/d/15LuLuksZUyslZW6UOe5LKZdiXN6Q7vG-EEO4FCcgsss/edit?usp=sharing
